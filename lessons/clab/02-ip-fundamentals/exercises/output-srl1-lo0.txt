@@ -1,0 +1,7 @@
+lo0 is up, speed None, type None
+  lo0.0 is up
+    Network-instances:
+      * Name: default (default)
+    Encapsulation   : null
+    Type            : None
+    IPv4 addr    : 10.10.10.1/32 (static, preferred, primary)

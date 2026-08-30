@@ -1,0 +1,27 @@
+Exercise 5 Deliverables: Why /30 at .200 breaks reaching .1
+
+host1's eth1 was set to 10.1.1.200/30.
+
+A /30 mask only covers 4 addresses: 10.1.1.200 - 10.1.1.203.
+- Network address:   10.1.1.200
+- Broadcast address: 10.1.1.203
+- Usable hosts:      10.1.1.201 - 10.1.1.202
+
+srl1's address, 10.1.1.1, falls way outside that range (200-203).
+
+How a host decides "local" vs "needs a gateway":
+A host ANDs the destination IP with its own subnet mask. If the result
+matches its own network, the destination is considered local (same
+subnet, reachable directly via ARP). If not, the host must route the
+packet out through a gateway.
+
+With a /30 mask, 10.1.1.1 ANDed against 255.255.255.252 does NOT match
+host1's own network (10.1.1.200/30). So host1 thinks .1 is NOT on its
+local subnet, even though both addresses start with "10.1.1." and look
+close together. Since no gateway is configured for this mismatched
+subnet, the packet has nowhere to go, producing "Network is unreachable."
+
+Lesson: the subnet mask -- not how close two IPs look numerically --
+defines the boundary of a local network. A small mask like /30 creates
+a tiny 4-address island; addresses just outside that island are treated
+as remote, even if they're "next door" by IP number.

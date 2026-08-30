@@ -1,3 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+
+# containerlab runtime state (root-owned generated configs/certs)
+clab-*/
+**/clab-*/

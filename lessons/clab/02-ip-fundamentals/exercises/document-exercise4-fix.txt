@@ -1,0 +1,10 @@
+# To reneable enterface
+```
+enter candidate
+set / interface ethernet-1/1 admin-state enable
+commit now
+```
+
+# Check which interface is down
+In srl1
+`show interface brief`

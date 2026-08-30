@@ -1,0 +1,3 @@
+- Cross-subnet ping fails while neighbouring device works.
+- host1's arp table 
+- cross-subnet fails because no actual link connected.

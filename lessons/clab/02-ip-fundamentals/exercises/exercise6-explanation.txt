@@ -1,0 +1,27 @@
+Exercise 6 Deliverables: Local vs Remote Subnets, and Why Gateways Matter
+
+host1 has address 10.1.1.2/24 on eth1. That /24 mask means host1's local
+subnet is 10.1.1.0 - 10.1.1.255.
+
+Local subnet (10.1.1.1):
+Same /24 network as host1. Host1 ANDs the destination against its mask,
+gets a match, so it knows the target lives on the same wire. It sends an
+ARP request, learns srl1's MAC, and delivers the packet directly --
+no routing needed. This is why ping to 10.1.1.1 kept working even after
+the default route was deleted.
+
+Remote subnet (10.1.2.1):
+Different network (10.1.2.0/24), outside host1's local /24. Host1 can't
+ARP for it directly -- it isn't on the same wire. To reach it, host1 must
+hand the packet to a router (gateway) that knows how to get to 10.1.2.0/24.
+That's what the default route (via 10.1.1.1) provides: "for anything not
+on my local subnet, send it to this gateway."
+
+With the default route deleted, host1's routing table only had the
+directly-connected 10.1.1.0/24 entry. So traffic to 10.1.2.1 had no route
+at all, producing "Network is unreachable."
+
+Lesson: local subnet = reachable directly via ARP/L2. Remote subnet =
+requires a router/gateway plus a route telling the host which gateway to
+use. Without a default (or more specific) route, a host has no way to
+reach anything outside its own subnet.
