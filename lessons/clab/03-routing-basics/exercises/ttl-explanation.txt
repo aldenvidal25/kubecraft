@@ -1,0 +1,72 @@
+Exercise 5: TTL and Routing Loops
+====================================
+
+Setup: srl1's next-hop-group nhg-10-1-5-0-24 was repointed from
+10.1.3.2 (srl3, correct) to 10.1.2.2 (srl2). srl2 still has its own
+static route for 10.1.5.0/24 pointing back to srl1 (10.1.2.1). Result:
+a two-router routing loop between srl1 and srl2.
+
+
+What is TTL?
+--------------
+TTL (Time To Live) is a field in the IPv4 header, one byte, set by the
+sending host (Linux defaults to 64). Every router that forwards the
+packet decrements TTL by 1 before sending it out. If a router
+decrements TTL to 0, it does NOT forward the packet -- it drops it and
+sends an ICMP "Time Exceeded" message back to the original source.
+
+TTL exists specifically to bound how long a packet can circulate in
+a network. Without it, a routing loop would let a packet ricochet
+between routers forever, consuming bandwidth and CPU indefinitely.
+
+
+Why does the looped packet eventually stop?
+----------------------------------------------
+With srl1 -> srl2 -> srl1 -> srl2 ... looping:
+
+  host1 sends toward 10.1.5.2 with TTL=64.
+  srl1 decrements to 63, forwards to srl2 (wrong next-hop).
+  srl2 decrements to 62, forwards back to srl1 (its own static route).
+  srl1 decrements to 61, forwards to srl2 again.
+  ... repeats, TTL dropping by 1 each hop ...
+  Eventually TTL reaches 0 at whichever router is holding the packet.
+  That router drops it and sends "ICMP Time Exceeded" back to host1.
+
+The packet does NOT loop forever -- TTL guarantees it dies within
+(initial TTL) hops, in this case after roughly 64 round trips through
+the two routers. This is exactly the mechanism `traceroute` exploits
+on purpose: it sends probes with TTL=1, 2, 3... and each router along
+the path that decrements TTL to 0 replies with "Time Exceeded",
+revealing itself as a hop.
+
+
+What traceroute shows during the loop
+-----------------------------------------
+  docker exec clab-routing-basics-host1 ping -c 3 -W 10 10.1.5.2
+  docker exec clab-routing-basics-host1 traceroute -n -w 2 10.1.5.2
+
+Expected pattern: the hop list alternates between srl1's and srl2's
+interface IPs (e.g. 10.1.2.1, 10.1.2.2, 10.1.2.1, 10.1.2.2, ...)
+repeating up to the max hop count (traceroute defaults to 30, far
+short of TTL=64, so it just shows "* * *" or repeats without ever
+reaching host3). Ping shows 100% packet loss -- the destination is
+never reached, but no single router reports the path as "down"; each
+one insists it has a valid route.
+
+
+Key takeaway
+--------------
+- A routing loop is not caused by a missing route -- both routers
+  have a route, they just point at each other.
+- The route table alone won't reveal a loop; you have to trace the
+  actual path (traceroute) to see the repetition.
+- TTL is what keeps a routing loop from being a denial-of-service
+  bug on its own -- packets die and get retried/reported instead of
+  circulating forever. But the application-level symptom is identical
+  to any other reachability failure: the ping just times out.
+
+
+Diagnostic commands used
+---------------------------
+  docker exec clab-routing-basics-host1 ping -c 3 -W 10 10.1.5.2
+  docker exec clab-routing-basics-host1 traceroute -n -w 2 10.1.5.2

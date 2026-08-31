@@ -1,0 +1,64 @@
+Exercise 4: Black Hole Routing -- Wrong Next-Hop
+===================================================
+
+Setup: srl1's next-hop-group nhg-10-1-5-0-24 (used by the static route
+10.1.5.0/24) was pointed at 10.1.3.99 instead of the correct next-hop,
+10.1.3.2 (srl3's e1-1 address). 10.1.3.99 does not exist on the
+10.1.3.0/24 link.
+
+
+1. Does the route exist?
+--------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+
+Yes. The route table still shows:
+  10.1.5.0/24  static  static_route_mgr  Active: True  next-hop-group nhg-10-1-5-0-24
+
+The routing table has no way to know the next-hop is bogus -- it only
+stores what it was told to store. "Active: True" just means the route
+is installed and eligible for forwarding, not that the next-hop is
+actually reachable.
+
+
+2. Check the ARP table
+-------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show arpnd arp-entries"
+
+10.1.3.99 never appears with a resolved MAC address (or shows as
+incomplete/pending). srl1 sends ARP requests ("who has 10.1.3.99?")
+onto the 10.1.3.0/24 segment and nobody answers, because no device on
+that link owns that address.
+
+
+3. Why a valid-looking route can still black-hole traffic
+-------------------------------------------------------------
+A static route only tells the router WHERE to send matching packets --
+it does not verify that the destination exists or will respond. When
+srl1 receives a packet for 10.1.5.0/24, it:
+
+  1. Matches the route (10.1.5.0/24 -> nhg-10-1-5-0-24) -- succeeds,
+     the route lookup is fine.
+  2. Resolves the next-hop IP (10.1.3.99) to a MAC address via ARP --
+     fails, no reply ever comes.
+  3. With no ARP entry, srl1 cannot build a valid Ethernet frame to
+     forward the packet. The packet is silently dropped.
+
+This is a "black hole": traffic is accepted into the route (nothing in
+the routing table looks broken) but vanishes at the last step, with no
+error sent back to the source. Unlike a missing route (which usually
+produces an ICMP "destination unreachable" if configured, or at least
+fails a lookup you can immediately spot), a black hole looks correct
+until you cross-check the routing table against the ARP table or
+actually test reachability to the next-hop itself.
+
+Lesson: a route being present and "Active: True" is necessary but not
+sufficient for working connectivity -- the next-hop must also be a
+real, reachable device on that link. Always verify both layers when
+troubleshooting: L3 (route table) and L2 (ARP/next-hop reachability).
+
+
+Diagnostic commands used
+---------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show arpnd arp-entries"
+  docker exec clab-routing-basics-host1 ping -c 3 -W 5 10.1.5.2

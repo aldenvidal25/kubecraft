@@ -1,0 +1,75 @@
+Exercise 6: Unreachable Next-Hop -- Why Route Existence Does Not
+Guarantee Path Availability
+=====================================================================
+
+Setup: srl1's interface ethernet-1/3 (link to srl3, 10.1.3.1/24) was
+administratively disabled. The static route 10.1.5.0/24 via 10.1.3.2
+was left completely untouched.
+
+
+1. Check interface status on srl1
+------------------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show interface brief"
+
+ethernet-1/3 shows admin-state: disable (down), while ethernet-1/1 and
+ethernet-1/2 remain up.
+
+
+2. The route still exists
+----------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+
+10.1.5.0/24 is still listed as an active static route pointing to
+10.1.3.2 via ethernet-1/3.0 -- nothing in the route table itself
+changed when the interface went down.
+
+
+3. Why a route can exist even when the link is down
+--------------------------------------------------------
+A router's routing table (control plane) and its physical/link state
+(data plane) are tracked independently:
+
+- The routing table is built from configuration (static routes) and
+  learned protocols (in later lessons, e.g. BGP/OSPF). It records
+  intent: "packets for this prefix go out this interface, to this
+  next-hop."
+- Interface admin-state is separate operational state: whether that
+  physical (or virtual) port is actually able to send/receive frames
+  right now.
+
+A static route does not automatically get withdrawn just because its
+egress interface is administratively shut down. SR Linux (like most
+platforms) keeps the route entry in the table -- the operator
+explicitly configured it, so it stays until explicitly removed, even
+if it is currently unusable. Some dynamic routing protocols DO
+withdraw routes automatically when the underlying interface goes
+down (that's one of their advantages over static routing, previewed
+in this lesson's teaser for Lesson 4) -- but a plain static route has
+no such feedback loop.
+
+Consequence: srl1 accepts packets matching 10.1.5.0/24 into the route
+lookup successfully, tries to forward them out ethernet-1/3, and fails
+silently because the interface can't transmit. The failure mode looks
+identical to the black-hole scenario from Exercise 4 (route says one
+thing, forwarding can't actually happen) but the root cause is
+different -- there it was an unresolvable next-hop (L2/ARP failure on
+a live link); here it's the link itself being administratively down.
+
+
+Key takeaway
+--------------
+Route table entries are declarations of intent, not live guarantees.
+"The route exists" only tells you what the router WOULD do if the
+path were available -- it says nothing about whether the interface,
+the next-hop, or anything downstream is actually working right now.
+Troubleshooting connectivity always requires checking BOTH: the route
+table (is there a matching entry?) AND the operational state of
+everything that route depends on (interface up? next-hop reachable
+via ARP? actual link healthy?).
+
+
+Diagnostic commands used
+---------------------------
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show interface brief"
+  docker exec -it clab-routing-basics-srl1 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+  docker exec clab-routing-basics-host1 ping -c 3 -W 5 10.1.5.2

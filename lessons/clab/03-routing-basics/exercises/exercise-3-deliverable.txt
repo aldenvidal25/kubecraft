@@ -1,0 +1,63 @@
+Exercise 3: Break/Fix -- Missing Route
+=========================================
+
+Setup: deleted srl2's static route to 10.1.5.0/24 (host3's subnet) and
+its next-hop-group, leaving srl2 with no route toward the hub for that
+prefix.
+
+
+1. Check srl2's routing table -- what's missing?
+-------------------------------------------------
+
+Command:
+  docker exec -it clab-routing-basics-srl2 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+
+Finding:
+The 10.1.5.0/24 entry is gone entirely. Compare against the original
+table (see exercises/srl2-route-table.png) which had:
+
+  10.1.5.0/24  static  static_route_mgr  ...  next-hop-group -> 10.1.2.1
+
+That entry no longer appears. srl2 has no way to reach host3's subnet
+-- longest-prefix match finds nothing for 10.1.5.2, so the packet is
+dropped at srl2 (no matching route, no default route configured).
+
+
+2. Explain why both host2->host3 AND host3->host2 fail
+--------------------------------------------------------
+
+host2 -> host3:
+  host2 sends to its default gateway, srl2. srl2 needs the (now
+  deleted) 10.1.5.0/24 route to forward the packet toward the hub
+  (srl1). With the route gone, the packet dies at srl2 and never
+  leaves the router. Ping reports 100% loss -- the request itself
+  never reaches host3.
+
+host3 -> host2:
+  host3 sends to its default gateway, srl3. srl3 still has its route
+  to 10.1.4.0/24 via srl1 (untouched). srl1 still has its route to
+  10.1.4.0/24 via srl2 (untouched). The REQUEST successfully reaches
+  srl2 and gets delivered to host2 -- host2 actually receives the
+  ping.
+
+  But host2's REPLY, going back to host3, needs srl2 to route
+  10.1.5.0/24 toward the hub -- the exact route that was deleted. The
+  reply dies at srl2 on the way out. From host3's point of view, no
+  reply ever comes back, so `ping` reports failure -- even though the
+  echo request physically arrived at host2.
+
+Why "one router, both directions" isn't a coincidence:
+  srl2 sits on the path between host2 and host3 in BOTH directions --
+  as the first hop leaving host2, and as the last hop before host2 on
+  the return leg. A single missing route on srl2 is therefore
+  unavoidably hit by every host2<->host3 packet regardless of which
+  way it's traveling. This is also why host1 -> host3 still works in
+  the symptom list: that path never touches srl2 at all (it's
+  host1 -> srl1 -> srl3 -> host3), so srl2's missing route is
+  irrelevant to it.
+
+Diagnostic commands used:
+  docker exec -it clab-routing-basics-srl2 sr_cli -c "show network-instance default route-table ipv4-unicast summary"
+  docker exec clab-routing-basics-host2 ping -c 3 -W 5 10.1.5.2
+  docker exec clab-routing-basics-host3 ping -c 3 -W 5 10.1.4.2
+  docker exec clab-routing-basics-host1 ping -c 3 10.1.5.2
